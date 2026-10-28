@@ -71,3 +71,31 @@ touch any file, commit, or log (tokens live only in the shell session).
 - [ ] Final assemble + QA gates (ffprobe / freezedetect / contact sheet).
 - [ ] Run report + honest limits (`output/REPORT-ep002-pluto.md`).
 - [ ] Final push + owner delivery (Telegram token currently 401 — see report).
+
+## 2026-10-28 · 12:0x–12:2x UTC — brick 6 · full render + assemble + QA
+- Disk-bound frame store killed mid-run (0.4 MB/s I/O); replaced with the
+  rawvideo pipe into ffmpeg (0.15 s/frame, zero intermediate frames).
+- Defect: STORY crash — unconditional ANCH access; fixed with guarded .get().
+- Bitrate cap added (crf 23 / maxrate 2M / audio 160k) to respect GitHub's
+  100 MB file limit; detached background runs get reaped here — foreground
+  chunked renders used instead (4 chunks, ~20 min total).
+- All 24 segments rendered: 53 MB.
+- Assembled: concat + music mix (46 synced cues) + QA.
+  **QA: ffprobe 1920×1080/23.99fps/5:33 PASS · freezedetect NONE PASS ·
+  contact sheets inspected PASS · audio no clipping.**
+- Master 56.9 MB; Telegram 720p cut 19.3 MB; title-card + rules spot-frames
+  verified (`output/qa/title-check*.jpg`).
+- Run report: `output/REPORT-ep002-pluto.md` (incl. honest limits).
+- Telegram bot token supplied by owner returns 401 — delivery via repo + chat;
+  token flagged for rotation.
+
+## Brick ledger — final state
+- [x] Repo created; recipe absorbed; dead token identified & reported.
+- [x] Script + fact cards (24 scenes).
+- [x] 7 plates adopted (1 reject → regenerated), prompts logged.
+- [x] Edge TTS narration complete (Andrew, 311.4 s).
+- [x] 12s motion proof; header-color defect found & fixed.
+- [x] Full render (streamed, deterministic) + music bed + assembly.
+- [x] QA gates all PASS.
+- [x] Run report + honest limits written.
+- [x] Everything pushed to superz1402/pluto-never-one-of-us.

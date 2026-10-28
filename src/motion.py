@@ -114,7 +114,7 @@ def glow_sprite(n=280, rgb=(210, 255, 225), amax=190):
     arr = np.zeros((n, n, 4), dtype=np.uint8)
     arr[..., 0], arr[..., 1], arr[..., 2] = rgb
     arr[..., 3] = a.astype(np.uint8)
-    return Image.fromarray(arr, "RGBA")
+    return Image.fromarray(arr)
 GLOW = glow_sprite()
 GLOW_L = GLOW.resize((440, 440), Image.LANCZOS)
 GLOW_WARM = glow_sprite(320, (255, 236, 200), 200)
@@ -126,7 +126,7 @@ def light_band():
     arr = np.zeros((1080, n, 4), dtype=np.uint8)
     arr[..., 0], arr[..., 1], arr[..., 2] = 255, 246, 214
     arr[..., 3] = np.tile(a[None, :], (1080, 1))
-    return Image.fromarray(arr, "RGBA")
+    return Image.fromarray(arr)
 BAND = light_band()
 
 def scan_band_dark():
@@ -135,7 +135,7 @@ def scan_band_dark():
     arr = np.zeros((1080, n, 4), dtype=np.uint8)
     arr[..., 0], arr[..., 1], arr[..., 2] = 160, 255, 205
     arr[..., 3] = np.tile(a[None, :], (1080, 1))
-    return Image.fromarray(arr, "RGBA")
+    return Image.fromarray(arr)
 DBAND = scan_band_dark()
 
 # ---------- per-frame furniture ----------
@@ -304,7 +304,7 @@ ANCH = {
 def grain(img_rgb, fidx):
     rng = np.random.default_rng(fidx * 2654435761 % (2**32))
     arr = np.asarray(img_rgb).astype(np.int16)
-    n = rng.integers(-5, 6, (H, W, 1), dtype=np.int16)
+    n = rng.integers(-4, 5, (H, W, 1), dtype=np.int16)
     return np.clip(arr + n, 0, 255).astype(np.uint8)
 
 # ---------- choreographies ----------
@@ -312,8 +312,9 @@ def ch_hook(img, s, t, dur, dark=False):
     draw_stack(img, s, t)
     label_card(img, s, t, dur)
     if s.get("sweep"): sweep_light(img, t, dur, dark)
-    ax, ay = ANCH[s["plate"]]
-    if s.get("rings"): rings_at(img, ax, ay, t, (0.42 * dur, 0.68 * dur), dark)
+    if s.get("rings"):
+        ax, ay = ANCH.get(s["plate"], (W // 2, H // 2))
+        rings_at(img, ax, ay, t, (0.42 * dur, 0.68 * dur), dark)
     checklist_card(img, s, t, dur, dark)
 
 def ch_story(img, s, t, dur):
@@ -321,14 +322,14 @@ def ch_story(img, s, t, dur):
 
 def ch_status(img, s, t, dur):
     draw_stack(img, s, t)
-    ax, ay = ANCH[s["plate"]]
+    ax, ay = ANCH.get(s["plate"], (W // 2, H // 2))
     if s.get("rings"): rings_at(img, ax, ay, t, (0.40 * dur, 0.66 * dur))
     checklist_card(img, s, t, dur, dark=True)
     sweep_light(img, t, dur, True)
 
 def ch_orbit(img, s, t, dur):
     draw_stack(img, s, t)
-    ax, ay = ANCH[s["plate"]]
+    ax, ay = ANCH.get(s["plate"], (W // 2, H // 2))
     # comet pulse: travels sun-side -> the eccentric dot, then holds
     pp = clamp((t - 0.6) / (0.42 * dur))
     if 0 < pp < 1:
@@ -343,7 +344,7 @@ def ch_orbit(img, s, t, dur):
 
 def ch_crowd(img, s, t, dur):
     draw_stack(img, s, t)
-    ax, ay = ANCH[s["plate"]]
+    ax, ay = ANCH.get(s["plate"], (W // 2, H // 2))
     if s.get("pulse") == "crowd":
         # deterministic twinkle field — the belt is alive
         rng = np.random.default_rng(42)
@@ -360,7 +361,7 @@ def ch_crowd(img, s, t, dur):
 
 def ch_heart(img, s, t, dur):
     draw_stack(img, s, t)
-    ax, ay = ANCH[s["plate"]]
+    ax, ay = ANCH.get(s["plate"], (W // 2, H // 2))
     # breathing glow on the heart
     br = 0.85 + 0.15 * math.sin(2 * math.pi * t / 2.4)
     if br > 0.05:
@@ -445,57 +446,55 @@ def render_frame(si, t, t_glob, total, fidx):
     return Image.fromarray(arr)
 
 # ---------- rendering drivers ----------
-def render_scenes(scene_ids, tag):
-    total_all = sum(scene_duration(s) + PAD for s in CFG["scenes"])
-    starts = {}
-    acc = 0.0
+def starts_total():
+    starts = {}; acc = 0.0
     for s in CFG["scenes"]:
         starts[s["id"]] = acc
         acc += scene_duration(s) + PAD
-    total = acc
-    for sid in scene_ids:
-        si = next(i for i, s in enumerate(CFG["scenes"]) if s["id"] == sid)
-        s = CFG["scenes"][si]
-        dur = scene_duration(s) + PAD
-        n = int(round(dur * FPS))
-        fdir = os.path.join(FRAMES, sid)
-        os.makedirs(fdir, exist_ok=True)
-        t0 = starts[sid]
-        for i in range(n):
-            fpath = os.path.join(fdir, f"f{i:04d}.jpg")
-            if os.path.exists(fpath): continue
-            t = i / FPS
-            render_frame(si, min(t, dur), t0 + t, total, int(round((t0 + t) * FPS))
-                         ).save(fpath, quality=88)
-        print(f"[{tag}] {sid}: {n} frames done", flush=True)
+    return starts, acc
 
-def encode_segment(sid):
-    fdir = os.path.join(FRAMES, sid)
-    dur = scene_duration(next(s for s in CFG["scenes"] if s["id"] == sid)) + PAD
+def stream_scene(sid):
+    """Render frames straight into ffmpeg via rawvideo pipe — zero disk I/O.
+    Frame-accurate audio: video frames count == (dur+pad)*FPS; audio apadded."""
+    si = next(i for i, s in enumerate(CFG["scenes"]) if s["id"] == sid)
+    s = CFG["scenes"][si]
+    dur = scene_duration(s) + PAD
     n = int(round(dur * FPS))
-    seg = os.path.join(SEG, f"{sid}.mp4")
     os.makedirs(SEG, exist_ok=True)
+    seg = os.path.join(SEG, f"{sid}.mp4")
+    starts, total = starts_total()
+    t0 = starts[sid]
     ap = os.path.join(AUD, f"{sid}.mp3")
+    cmd = ["ffmpeg", "-y", "-loglevel", "error",
+           "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
+           "-r", str(FPS), "-i", "-"]
     if os.path.exists(ap):
-        vf = ["-framerate", str(FPS), "-i", os.path.join(fdir, "f%04d.jpg"),
-              "-i", ap, "-af", f"apad=whole_dur={dur:.3f}",
-              "-map", "0:v", "-map", "1:a"]
+        cmd += ["-i", ap, "-af", f"apad=whole_dur={dur:.3f}",
+                "-map", "0:v", "-map", "1:a"]
     else:
-        vf = ["-framerate", str(FPS), "-i", os.path.join(fdir, "f%04d.jpg"),
-              "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-              "-map", "0:v", "-map", "1:a"]
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *vf,
-                    "-t", f"{dur:.3f}", "-c:v", "libx264", "-crf", "18",
-                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-                    "-ar", "44100", "-ac", "2", "-movflags", "+faststart", seg],
-                   check=True)
+        cmd += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                "-map", "0:v", "-map", "1:a"]
+    cmd += ["-t", f"{dur:.3f}", "-c:v", "libx264", "-preset", "medium",
+            "-crf", "23", "-maxrate", "2.0M", "-bufsize", "4M", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
+            "-ar", "44100", "-ac", "2", "-movflags", "+faststart", seg]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+    for i in range(n):
+        t = i / FPS
+        img = render_frame(si, min(t, dur), t0 + t, total, int(round((t0 + t) * FPS)))
+        proc.stdin.write(img.tobytes())
+    proc.stdin.close()
+    proc.wait()
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed for {sid}")
+    print(f"[stream] {sid}: {n} frames -> {os.path.basename(seg)}", flush=True)
     return seg
 
 def main():
-    mode = sys.argv[1] if len(sys.argv) > 1 else "full"
+    mode = sys.argv[1] if len(sys.argv) > 1 else "stream"
     if mode == "proof":
         # 12s proof: hook (s01) 4s / orbit (s08) 4s / verdict (s16) 4s
-        os.makedirs(os.path.join(FRAMES, "proof"), exist_ok=True)
+        pf = os.path.join(OUT, "frames-proof")
+        os.makedirs(pf, exist_ok=True)
         picks = [("s01", 0.0, 4.0), ("s08", 0.0, 4.0), ("s16", 0.0, 4.0)]
         idx = 0
         for sid, a, b in picks:
@@ -506,24 +505,19 @@ def main():
             for i in range(n):
                 t = a + i / FPS
                 render_frame(si, min(t, dur), t, (b - a) * 3, idx
-                             ).save(os.path.join(FRAMES, "proof", f"f{idx:04d}.jpg"), quality=90)
+                             ).save(os.path.join(pf, f"f{idx:04d}.jpg"), quality=90)
                 idx += 1
         outp = os.path.join(OUT, "motion-proof-12s.mp4")
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(FPS),
-                        "-i", os.path.join(FRAMES, "proof", "f%04d.jpg"),
+                        "-i", os.path.join(pf, "f%04d.jpg"),
                         "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
                         "-movflags", "+faststart", outp], check=True)
         print("PROOF DONE", outp)
         return
-    if mode == "frames":
-        ids = sys.argv[2].split(",") if len(sys.argv) > 2 else [s["id"] for s in CFG["scenes"]]
-        render_scenes(ids, "frames")
-        return
-    if mode == "encode":
+    if mode == "stream":
         ids = sys.argv[2].split(",") if len(sys.argv) > 2 else [s["id"] for s in CFG["scenes"]]
         for sid in ids:
-            encode_segment(sid)
-            print("encoded", sid, flush=True)
+            stream_scene(sid)
         return
     if mode == "concat":
         segs = [os.path.join(SEG, f"{s['id']}.mp4") for s in CFG["scenes"]]

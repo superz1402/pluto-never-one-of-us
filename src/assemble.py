@@ -67,6 +67,15 @@ def contact_sheet(path):
     sheet.save(outp, quality=90)
     return outp
 
+def telegram_cut(final):
+    """Bot API sendVideo caps at 50 MB — ship a 720p cut for Telegram."""
+    outp = os.path.join(OUT, "ep002-pluto-telegram.mp4")
+    sh(["ffmpeg", "-y", "-loglevel", "error", "-i", final,
+        "-vf", "scale=1280:720", "-c:v", "libx264", "-preset", "medium",
+        "-crf", "27", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart", outp])
+    return outp
+
 def main():
     silent = concat()
     final = mix(silent)
@@ -81,7 +90,10 @@ def main():
     print("freezes:", fr if fr else "NONE — PASS")
     sheet = contact_sheet(final)
     print("sheet:", sheet)
+    tcut = telegram_cut(final)
+    print("telegram cut:", tcut, f"{os.path.getsize(tcut)/1e6:.1f} MB")
     json.dump({"freezes": fr, "size_mb": round(size_mb, 1),
+               "telegram_mb": round(os.path.getsize(tcut)/1e6, 1),
                "probe": probe},
               open(os.path.join(OUT, "qa/final-qa.json"), "w"), indent=1)
 
