@@ -1,0 +1,6 @@
+/home/z/my-project/pluto-never-one-of-us/src/motion.py:117: DeprecationWarning: 'mode' parameter is deprecated and will be removed in Pillow 13 (2026-10-15)
+  return Image.fromarray(arr, "RGBA")
+/home/z/my-project/pluto-never-one-of-us/src/motion.py:129: DeprecationWarning: 'mode' parameter is deprecated and will be removed in Pillow 13 (2026-10-15)
+  return Image.fromarray(arr, "RGBA")
+/home/z/my-project/pluto-never-one-of-us/src/motion.py:138: DeprecationWarning: 'mode' parameter is deprecated and will be removed in Pillow 13 (2026-10-15)
+  return Image.fromarray(arr, "RGBA")

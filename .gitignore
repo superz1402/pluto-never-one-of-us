@@ -1,0 +1,9 @@
+# Frame stores and segments are ephemeral render intermediates (GBs).
+# Everything that matters — plates, audio, reports, worklogs, QA sheets,
+# and the final cut — is committed.
+output/frames/
+output/segments/
+__pycache__/
+*.pyc
+reference/
+assets/raw/
