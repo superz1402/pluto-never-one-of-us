@@ -58,3 +58,11 @@ stamps. Deterministic film grain doubles as the anti-freeze device
 
 Recipe + plate vocabulary: proof-factory (owner-passed 2026-10-28).
 Owner: Bilal · Operator: Momo · Narration: Edge TTS Andrew (multilingual).
+
+---
+
+## Project status
+
+**Completed project** — verified in the portfolio audit of **7 November 2026** (README, codebase and project state reviewed).
+
+_Last verified: 7 November 2026_
